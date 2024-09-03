@@ -23,6 +23,7 @@ import {ERC721Permit} from "tap-utils/utils/ERC721Permit.sol"; // TODO audit
 */
 
 // TODO naming
+/// @notice Struct representing the details of a TAP option
 struct TapOption {
     uint128 entry; // time when the option position was created
     uint128 expiry; // timestamp, as once one wise man said, the sun will go dark before this overflows
@@ -30,11 +31,23 @@ struct TapOption {
     uint256 tOLP; // tOLP token ID
 }
 
-contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, PearlmitHandler, BaseBoringBatchable {
-    uint256 public mintedOTAP; // total number of OTAP minted
-    address public broker; // address of the onlyBroker
+/// @title OTAP (Option TAP) Token Contract
+/// @notice This contract manages Option TAP tokens, representing options on TAP tokens
+/// @dev Implements ERC721 standard with additional option features
 
-    mapping(uint256 => TapOption) public options; // tokenId => Option
+contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, PearlmitHandler, BaseBoringBatchable {
+    /// @notice Total number of OTAP tokens minted
+    uint256 public mintedOTAP;
+
+    /// @notice Address of the broker who has special privileges
+    address public broker;
+
+    /// @notice Mapping of token IDs to their corresponding option details
+    mapping(uint256 => TapOption) public options;
+
+    /// @notice Initializes the OTAP contract
+    /// @param _pearlmit Address of the Pearlmit contract for permit functionality
+    /// @param _owner Address of the contract owner
 
     constructor(IPearlmit _pearlmit, address _owner)
         ERC721NftLoader("Option TAP", "oTAP", _owner)
@@ -45,11 +58,30 @@ contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, Pearlm
     // ==========
     //   EVENTS
     // ==========
+
+    /// @notice Emitted when a new OTAP token is minted
+    /// @param to Address receiving the minted token
+    /// @param tokenId ID of the minted token
+    /// @param option Details of the option associated with the token
     event Mint(address indexed to, uint256 indexed tokenId, TapOption indexed option);
+
+    /// @notice Emitted when an OTAP token is burned
+    /// @param from Address from which the token is burned
+    /// @param tokenId ID of the burned token
+    /// @param option Details of the option associated with the burned token
     event Burn(address indexed from, uint256 indexed tokenId, TapOption indexed option);
 
+    // ==========
+    //   ERRORS
+    // ==========
+
+    /// @notice Error thrown when an action is not authorized
     error NotAuthorized();
+
+    /// @notice Error thrown when a function restricted to the broker is called by another address
     error OnlyBroker();
+
+    /// @notice Error thrown when an action that can only be performed once is attempted again
     error OnlyOnce();
 
     // =========
@@ -82,11 +114,13 @@ contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, Pearlm
     //    WRITE
     // ==========
 
-    /// @notice mints an OTAP
-    /// @param _to address to mint to
-    /// @param _expiry timestamp
-    /// @param _discount TAP discount in basis points
-    /// @param _tOLP tOLP token ID
+    /// @notice Mints a new OTAP token
+    /// @dev Only the broker can mint tokens
+    /// @param _to Address to receive the minted token
+    /// @param _expiry Timestamp when the option expires
+    /// @param _discount Discount in basis points
+    /// @param _tOLP tOLP token ID associated with this option
+    /// @return tokenId The ID of the newly minted token
     function mint(address _to, uint128 _expiry, uint128 _discount, uint256 _tOLP) external returns (uint256 tokenId) {
         if (msg.sender != broker) revert OnlyBroker();
 
@@ -98,11 +132,12 @@ contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, Pearlm
         option.tOLP = _tOLP;
 
         _safeMint(_to, tokenId);
-        emit Mint(_to, tokenId, option);
+        emit Mint(_to, tokenId, option)
     }
 
-    /// @notice burns an OTAP
-    /// @param _tokenId tokenId to burn
+    /// @notice Burns an existing OTAP token
+    /// @dev Only the broker can burn tokens
+    /// @param _tokenId ID of the token to burn
     function burn(uint256 _tokenId) external {
         if (msg.sender != broker) revert OnlyBroker();
         _burn(_tokenId);
@@ -110,15 +145,24 @@ contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, Pearlm
         emit Burn(msg.sender, _tokenId, options[_tokenId]);
     }
 
-    /// @notice tOB claim
+    /// @notice Allows the initial claim of the broker role
+    /// @dev Can only be called once to set the broker
     function brokerClaim() external {
         if (broker != address(0)) revert OnlyOnce();
         broker = msg.sender;
     }
 
+    /// @notice Returns the base URI for computing {tokenURI}
+    /// @return The base URI string
+
     function _baseURI() internal view override(ERC721, ERC721NftLoader) returns (string memory) {
         return baseURI;
     }
+
+    /// @notice Checks if the contract supports a given interface
+    /// @dev Overrides function from both ERC721Enumerable and ERC721
+    /// @param interfaceId The interface identifier
+    /// @return bool True if the contract supports the interface, false otherwise
 
     function supportsInterface(bytes4 interfaceId)
         public
@@ -130,6 +174,13 @@ contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, Pearlm
         return super.supportsInterface(interfaceId);
     }
 
+    /// @notice Hook that is called before any token transfer
+    /// @dev Overrides function from both ERC721 and ERC721Enumerable
+    /// @param from Address tokens are transferred from
+    /// @param to Address tokens are transferred to
+    /// @param firstTokenId The first token ID in the batch being transferred
+    /// @param batchSize The number of tokens being transferred in the batch
+
     function _beforeTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize)
         internal
         override(ERC721, ERC721Enumerable)
@@ -137,6 +188,13 @@ contract OTAP is ERC721, ERC721Permit, ERC721Enumerable, ERC721NftLoader, Pearlm
         super._beforeTokenTransfer(from, to, firstTokenId, batchSize);
     }
 
+    /// @notice Hook that is called after any token transfer
+    /// @dev Overrides function from both ERC721 and ERC721Permit
+    /// @param from Address tokens are transferred from
+    /// @param to Address tokens are transferred to
+    /// @param firstTokenId The first token ID in the batch being transferred
+    /// @param batchSize The number of tokens being transferred in the batch
+    
     function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize)
         internal
         virtual
